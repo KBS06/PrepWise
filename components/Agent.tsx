@@ -1,11 +1,9 @@
-// components/Agent.tsx
 "use client"
 
 import React, {useEffect, useState, useRef} from 'react'
 import Image from "next/image";
 import {cn} from "@/lib/utils";
 import {useRouter} from "next/navigation";
-// Import the Vapi instance from its SDK file
 import { vapi } from "@/lib/vapi.sdk"
 
 enum CallStatus {
@@ -27,14 +25,10 @@ const Agent = ({userName, userId, type} : AgentProps) => {
     const [callStatus, setCallStatus] = useState<CallStatus>(CallStatus.INACTIVE);
     const [messages, setMessages] = useState<SavedMessage[]>([]);
 
-    // Correcting the variable name to follow standard casing.
     const workflowId = process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID;
 
-    // Use a ref for the transcript container to scroll to the bottom
     const transcriptRef = useRef<HTMLDivElement>(null);
 
-    // This useEffect hook handles all Vapi event listeners.
-    // It runs once when the component mounts.
     useEffect(() => {
         const onCallStart = () => setCallStatus(CallStatus.ACTIVE);
         const onCallEnd = () => setCallStatus(CallStatus.FINISHED);
@@ -67,12 +61,10 @@ const Agent = ({userName, userId, type} : AgentProps) => {
         }
     }, [])
 
-    // This useEffect hook handles redirection after the call ends.
     useEffect(() => {
         if(callStatus === CallStatus.FINISHED) router.push('/');
     }, [callStatus, router]);
 
-    // This useEffect hook handles auto-scrolling the transcript view.
     useEffect(() => {
         if (transcriptRef.current) {
             transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
@@ -89,12 +81,12 @@ const Agent = ({userName, userId, type} : AgentProps) => {
         }
 
         try {
-            // This now makes a call to your server-side API route
-            const response = await fetch('/api/vapi/generate', {
+            // This now makes a call to the Vapi-specific server-side API route.
+            const response = await fetch('/api/vapi', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    // The action tells the server which logic to run
+                    // The action property directs the server to start the Vapi call.
                     action: 'startVapiCall',
                     workflowId: workflowId,
                     variableValues: {
@@ -110,11 +102,6 @@ const Agent = ({userName, userId, type} : AgentProps) => {
                 console.error('API Error:', data.error);
                 setCallStatus(CallStatus.INACTIVE);
             }
-
-            // The vapi.start() call is now handled on the server.
-            // The vapi SDK instance on the client will connect automatically
-            // once the server call is successfully initiated.
-
         } catch (e) {
             console.error('Failed to start VAPI call via API:', e);
             setCallStatus(CallStatus.INACTIVE);
@@ -127,7 +114,6 @@ const Agent = ({userName, userId, type} : AgentProps) => {
     }
 
     const latestMessage = messages[messages.length -1]?.content;
-
     const isCallInactiveOrFinished = callStatus === CallStatus.INACTIVE || callStatus === CallStatus.FINISHED;
 
     return (
