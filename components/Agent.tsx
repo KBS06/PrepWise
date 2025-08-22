@@ -82,7 +82,7 @@ const Agent = ({userName, userId, type} : AgentProps) => {
 
         try {
             // This now makes a call to the Vapi-specific server-side API route.
-            const response = await fetch('/api/vapi', {
+            const response = await fetch('/api/vapi/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
