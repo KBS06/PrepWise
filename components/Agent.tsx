@@ -1,6 +1,12 @@
-import React from 'react'
+// components/Agent.tsx
+"use client"
+
+import React, {useEffect, useState, useRef} from 'react'
 import Image from "next/image";
 import {cn} from "@/lib/utils";
+import {useRouter} from "next/navigation";
+// Import the Vapi instance from its SDK file
+import { vapi } from "@/lib/vapi.sdk"
 
 enum CallStatus {
     INACTIVE = "INACTIVE",
@@ -9,14 +15,120 @@ enum CallStatus {
     FINISHED = "FINISHED",
 }
 
-const Agent = ({userName} : AgentProps) => {
-    const isSpeaking = true;
-    const callStatus = CallStatus.FINISHED;
-    const messages = [
-        "What's your name?",
-        "My name is John Doe, nice to meet you!"
-    ];
-    const lastMessage = messages[messages.length - 1];
+interface SavedMessage {
+    role: 'user' | 'system' | 'assistant';
+    content: string;
+}
+
+const Agent = ({userName, userId, type} : AgentProps) => {
+
+    const router = useRouter();
+    const [isSpeaking, setIsSpeaking] = useState(false);
+    const [callStatus, setCallStatus] = useState<CallStatus>(CallStatus.INACTIVE);
+    const [messages, setMessages] = useState<SavedMessage[]>([]);
+
+    // Correcting the variable name to follow standard casing.
+    const workflowId = process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID;
+
+    // Use a ref for the transcript container to scroll to the bottom
+    const transcriptRef = useRef<HTMLDivElement>(null);
+
+    // This useEffect hook handles all Vapi event listeners.
+    // It runs once when the component mounts.
+    useEffect(() => {
+        const onCallStart = () => setCallStatus(CallStatus.ACTIVE);
+        const onCallEnd = () => setCallStatus(CallStatus.FINISHED);
+
+        const onMessage = (message: Message) => {
+            if(message.type === 'transcript' && message.transcriptType === 'final'){
+                const newMessage = { role: message.role, content: message.transcript || '' };
+                setMessages((prev) => [...prev, newMessage] );
+            }
+        }
+
+        const onSpeechStart = () => setIsSpeaking(true);
+        const onSpeechEnd = () => setIsSpeaking(false);
+        const onError = (error: Error) => console.error('Vapi Error:', error);
+
+        vapi.on('call-start', onCallStart);
+        vapi.on('call-end', onCallEnd);
+        vapi.on('message', onMessage);
+        vapi.on('speech-start', onSpeechStart);
+        vapi.on('speech-end', onSpeechEnd);
+        vapi.on('error', onError);
+
+        return () => {
+            vapi.off('call-start', onCallStart);
+            vapi.off('call-end', onCallEnd);
+            vapi.off('message', onMessage);
+            vapi.off('speech-start', onSpeechStart);
+            vapi.off('speech-end', onSpeechEnd);
+            vapi.off('error', onError);
+        }
+    }, [])
+
+    // This useEffect hook handles redirection after the call ends.
+    useEffect(() => {
+        if(callStatus === CallStatus.FINISHED) router.push('/');
+    }, [callStatus, router]);
+
+    // This useEffect hook handles auto-scrolling the transcript view.
+    useEffect(() => {
+        if (transcriptRef.current) {
+            transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
+        }
+    }, [messages]);
+
+    const handleCall = async () => {
+        setCallStatus(CallStatus.CONNECTING);
+
+        if (!workflowId) {
+            console.error('VAPI workflow ID is missing. Check your .env.local file.');
+            setCallStatus(CallStatus.INACTIVE);
+            return;
+        }
+
+        try {
+            // This now makes a call to your server-side API route
+            const response = await fetch('/api/vapi/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    // The action tells the server which logic to run
+                    action: 'startVapiCall',
+                    workflowId: workflowId,
+                    variableValues: {
+                        username: userName,
+                        userid: userId,
+                    },
+                }),
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                console.error('API Error:', data.error);
+                setCallStatus(CallStatus.INACTIVE);
+            }
+
+            // The vapi.start() call is now handled on the server.
+            // The vapi SDK instance on the client will connect automatically
+            // once the server call is successfully initiated.
+
+        } catch (e) {
+            console.error('Failed to start VAPI call via API:', e);
+            setCallStatus(CallStatus.INACTIVE);
+        }
+    }
+
+    const handleDisconnect = async () => {
+        setCallStatus(CallStatus.FINISHED);
+        vapi.stop();
+    }
+
+    const latestMessage = messages[messages.length -1]?.content;
+
+    const isCallInactiveOrFinished = callStatus === CallStatus.INACTIVE || callStatus === CallStatus.FINISHED;
 
     return (
         <>
@@ -43,23 +155,25 @@ const Agent = ({userName} : AgentProps) => {
 
             {messages.length > 0 && (
                 <div className="transcript-border">
-                    <div className="transcript">
-                        <p key={lastMessage} className={cn(`transition-opacity 
-                        duration-500 opacity-0`, `animate-fadeIn opacity-100`)}>
-                            {lastMessage}
-                        </p>
+                    <div ref={transcriptRef} className="transcript">
+                        {messages.map((message, index) => (
+                            <p key={index} className={cn(`transition-opacity 
+                            duration-500 opacity-0`, `animate-fadeIn opacity-100`)}>
+                                <strong>{message.role}:</strong> {message.content}
+                            </p>
+                        ))}
                     </div>
                 </div>
             )}
 
             <div className="w-full flex justify-center">
                 {callStatus !== 'ACTIVE' ? (
-                    <button className="relative btn-call">
-                        <span className={cn(`absolute animate-ping rounded-full opacity-75`, callStatus !== 'CONNECTING' & `hidden`)} />
-                            <span>{callStatus === 'INACTIVE' || callStatus === 'FINISHED' ? 'Call' : '. . . '}</span>
+                    <button className="relative btn-call" onClick={handleCall}>
+                        <span className={cn(`absolute animate-ping rounded-full opacity-75`, callStatus !== 'CONNECTING' && `hidden`)} />
+                        <span>{isCallInactiveOrFinished ? 'Call' : '. . . '}</span>
                     </button>
                 ): (
-                    <button className="btn-disconnect">
+                    <button className="btn-disconnect" onClick={handleDisconnect}>
                         End
                     </button>
                 )}
@@ -67,4 +181,4 @@ const Agent = ({userName} : AgentProps) => {
         </>
     )
 }
-export default Agent
+export default Agent;

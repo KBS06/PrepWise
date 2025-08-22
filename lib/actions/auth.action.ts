@@ -83,7 +83,7 @@ export async function signIn(params: SignInParams) {
     }
 }
 
-export async function getCurrentUser() : Promise<User | null> {
+export async function getCurrentUser() : Promise<User | undefined | null> {
     const cookieStore = await cookies();
 
     const sessionCookie = cookieStore.get('session')?.value;
